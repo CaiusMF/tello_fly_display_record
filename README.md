@@ -24,7 +24,7 @@ pip install opencv-contrib-python
 ### NumPy
 Array computing.
 ```
-$ pip install numpy
+pip install numpy
 ```
 
 ## Scripts
@@ -35,7 +35,7 @@ Processes:
  * Process 1 (main): drone command
  * Thread 1 (from main): read/process frame, display frame and write video
 
-FPS:
+FPS (avg):
  * With video writer: 20 FPS
  * Without video writer: 125 FPS
 
@@ -45,7 +45,7 @@ Processes:
  * Thread 1 (from main): read/process frame, display frame
  * Process 2: write video
 
-FPS:
+FPS (avg):
  * With video writer: 25 FPS
  * Without video writer: 125 FPS
 
@@ -56,6 +56,12 @@ Processes:
  * Process 2: display frame
  * Process 3: write video
 
-FPS:
+FPS (avg):
  * With video writer: 25 FPS
  * Without video writer: 125 FPS
+
+## Other
+I'm using the opencv-contrib version because of the Aruco detection algorithm in the process_frame function. But this algorithm can be replaced with any other computer vision or machine learning algorithm. If you don't want to use opencv-contrib, comment the Aruco part of the code and simply install opencv, like so:
+```
+pip install opencv-python
+```
