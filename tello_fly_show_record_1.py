@@ -6,23 +6,20 @@ from threading import Thread
 from multiprocessing import Pipe
 from djitellopy import Tello
 
+tello        = None       # tello object
+video_size   = (960, 720) # stream size W/H
+video_writer = None       # VideoWriter object
+keep_stream  = True       # tells whether to keep streaming or not
 
-tello       = None
-writer      = None
-keep_stream = True
 
-# aruco detection can be replaced here with other
-# machine learning algorithm (e.g. canny edge detection)
 def process_frame(command_pipe):
 	global tello
-	global writer
+	global video_size
+	global video_writer
 	global keep_stream
 
 	frame_read = tello.get_frame_read()
 	battery    = tello.get_battery()
-
-	aruco_dict_name = cv2.aruco.DICT_6X6_50
-	aruco_dict      = cv2.aruco.getPredefinedDictionary(aruco_dict_name)
 
 	FONT           = cv2.FONT_HERSHEY_SIMPLEX
 	FONT_SCALE     = 0.80
@@ -32,6 +29,9 @@ def process_frame(command_pipe):
 	fps_avg = 0
 	command_time_1 = time.time()
 
+	# this will be used to check whether we are processing the same frame
+	previous_gray = np.zeros(shape=(video_size[1], video_size[0]), dtype=np.uint8)
+
 	times = []
 	while keep_stream:
 		start_time = time.time()
@@ -40,20 +40,11 @@ def process_frame(command_pipe):
 		command_time_2 = start_time - command_time_1
 
 		frame = frame_read.frame.copy()
-		gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
+		gray  = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
 
-		corners, ids, rejects = cv2.aruco.detectMarkers(gray, aruco_dict)
-		if len(corners) != 0:
-			points = corners[0][0].astype(np.int32)
-			p1 = points[0] # tl
-			p2 = points[1] # tr
-			p3 = points[2] # br
-			p4 = points[3] # bl
-
-			cv2.line(frame, tuple(p1), tuple(p2), (0, 255, 0), 2)
-			cv2.line(frame, tuple(p2), tuple(p3), (0, 255, 0), 1)
-			cv2.line(frame, tuple(p3), tuple(p4), (0, 255, 0), 1)
-			cv2.line(frame, tuple(p4), tuple(p1), (0, 255, 0), 1)
+		#####################################################
+		# COMPUTER VISION / MACHINE LEARNING CODE GOES HERE #
+		#####################################################
 
 		text = f"FPS {fps}"
 		cv2.putText(frame, text, (50, 50), FONT, FONT_SCALE, (255, 0, 255), FONT_THICKNESS, cv2.LINE_AA)
@@ -73,9 +64,11 @@ def process_frame(command_pipe):
 			command_pipe.send(key)
 			command_time_1 = time.time()
 
-		if writer:
-			writer.write(frame)
-			time.sleep(1 / 30)
+		if video_writer:
+			same_frame    = np.array_equal(previous_gray, gray)
+			previous_gray = gray.copy()
+			if not same_frame:
+				video_writer.write(frame)
 
 		fps     = round(1.0 / (time.time() - start_time), 1)
 		times.append(fps)
@@ -83,14 +76,13 @@ def process_frame(command_pipe):
 
 if __name__ == "__main__":
 
-	write_video = False
-	write_name  = "tello_fly_show_record_1.avi"
-	write_size  = (960, 720)
-	if write_video:
+	video_write = True
+	video_name  = "tello_fly_show_record_1.avi"
+	if video_write:
 		fourcc = cv2.VideoWriter_fourcc(*'XVID')
-		writer = cv2.VideoWriter(write_name, fourcc, 30.0, write_size)
-		if not writer.isOpened():
-			print("Writer failure!")
+		video_writer = cv2.VideoWriter(video_name, fourcc, 30.0, video_size)
+		if not video_writer.isOpened():
+			print("video writer failure!")
 			exit()
 
 	tello = Tello()
@@ -133,9 +125,12 @@ if __name__ == "__main__":
 			tello.send_rc_control(0, 0, 0, -tello_spped)
 		elif key == ord('e'): # rotate right
 			tello.send_rc_control(0, 0, 0, tello_spped)
-		elif key == ord('h'): # rotate right
+		elif key == ord('h'): # stop
 			tello.send_rc_control(0, 0, 0, 0)
 
 
 	video_thread.join()
 	tello.end()
+
+	if video_writer:
+		video_writer.release()

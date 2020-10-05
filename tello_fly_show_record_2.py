@@ -8,11 +8,9 @@ from threading import Thread
 from multiprocessing import Process, Pipe, Event
 from djitellopy import Tello
 
-
-tello             = None
-video_writer      = None
-video_writer_size = (960, 720)
-
+tello        = None       # tello object
+video_size   = (960, 720) # stream size W/H
+video_writer = None       # VideoWriter object
 
 # function to handle keyboard interrupt
 def signal_handler(sig, frame):
@@ -30,13 +28,8 @@ def signal_handler(sig, frame):
 
 	sys.exit()
 
-# aruco detection can be replaced here with other
-# machine learning algorithm (e.g. canny edge detection)
 def process_frame(exit_event, command_conn, video_writer_conn):
 	global tello
-
-	aruco_dict_name = cv2.aruco.DICT_6X6_50
-	aruco_dict      = cv2.aruco.getPredefinedDictionary(aruco_dict_name)
 
 	FONT           = cv2.FONT_HERSHEY_SIMPLEX
 	FONT_SCALE     = 0.70
@@ -49,6 +42,9 @@ def process_frame(exit_event, command_conn, video_writer_conn):
 	fps_avg = 0
 	command_time_1 = time.time()
 
+	# this will be used to check whether we are processing the same frame
+	previous_gray = np.zeros(shape=(video_size[1], video_size[0]), dtype=np.uint8)
+
 	times = []
 	while not exit_event.is_set():
 		start_time = time.time()
@@ -59,19 +55,12 @@ def process_frame(exit_event, command_conn, video_writer_conn):
 		frame = frame_read.frame.copy()
 		gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
 
-		corners, ids, rejects = cv2.aruco.detectMarkers(gray, aruco_dict)
-		if len(corners) != 0:
-			points = corners[0][0].astype(np.int32)
-			p1 = points[0] # tl
-			p2 = points[1] # tr
-			p3 = points[2] # br
-			p4 = points[3] # bl
+		same_frame    = np.array_equal(previous_gray, gray)
+		previous_gray = gray.copy()
 
-			cv2.line(frame, tuple(p1), tuple(p2), (0, 255, 0), 2)
-			cv2.line(frame, tuple(p2), tuple(p3), (0, 255, 0), 1)
-			cv2.line(frame, tuple(p3), tuple(p4), (0, 255, 0), 1)
-			cv2.line(frame, tuple(p4), tuple(p1), (0, 255, 0), 1)
-
+		#####################################################
+		# COMPUTER VISION / MACHINE LEARNING CODE GOES HERE #
+		#####################################################
 
 		text = f"FPS {fps}"
 		cv2.putText(frame, text, (50, 50), FONT, FONT_SCALE, (255, 0, 255), FONT_THICKNESS, cv2.LINE_AA)
@@ -92,28 +81,29 @@ def process_frame(exit_event, command_conn, video_writer_conn):
 			command_time_1 = time.time()
 
 		# send frame to video writer process
-		video_writer_conn.send(frame)
+		if video_writer_conn:
+			if not same_frame:
+				video_writer_conn.send(frame)
 
 		fps     = round(1.0 / (time.time() - start_time), 1)
 		times.append(fps)
 		fps_avg = round(sum(times) / len(times), 1)
 
 
-def write_video(frame_conn, video_file_name):
+def write_video(frame_conn, video_name):
 	global video_writer
-	global video_writer_size
+	global video_size
 
 	signal.signal(signal.SIGINT, signal_handler)
 	signal.signal(signal.SIGTERM, signal_handler)
 
 	if video_writer is None:
 		fourcc = cv2.VideoWriter_fourcc(*'XVID')
-		video_writer = cv2.VideoWriter(video_file_name, fourcc, 30.0, video_writer_size)
+		video_writer = cv2.VideoWriter(video_name, fourcc, 30.0, video_size)
 
 	while True:
 		frame = frame_conn.recv()
 		video_writer.write(frame)
-		time.sleep(1 / 30)
 
 	# then we got the exit event so cleanup
 	signal_handler(None, None)
@@ -123,25 +113,28 @@ if __name__ == '__main__':
 	signal.signal(signal.SIGINT, signal_handler)
 	signal.signal(signal.SIGTERM, signal_handler)
 
-	tello_spped = 15
-	video_file_name = "tello_fly_show_record_2.avi"
+	video_write = True
+	video_name = "tello_fly_show_record_2.avi"
+	write_conn_out, write_conn_in = None, None
 
-	write_conn_out, write_conn_in = Pipe()
-	comm_conn_out, comm_conn_in = Pipe()
-
-	exit_event = Event()
-
-	write_process = Process(target=write_video, args=(write_conn_out, video_file_name, ))
-	write_process.start()
+	if video_write:
+		write_conn_out, write_conn_in = Pipe()
+		write_process = Process(target=write_video, args=(write_conn_out, video_name, ))
+		write_process.start()
 
 	tello = Tello()
 
 	tello.connect()
 	tello.streamon()
 
+	exit_event = Event()
+	comm_conn_out, comm_conn_in = Pipe()
+
 	process_thread = Thread(target=process_frame, args=(exit_event, comm_conn_in, write_conn_in, ))
 	process_thread.daemon = True
 	process_thread.start()
+
+	tello_spped = 15
 
 	while not exit_event.is_set():
 		key = comm_conn_out.recv()
@@ -171,14 +164,14 @@ if __name__ == '__main__':
 			tello.send_rc_control(0, 0, 0, -tello_spped)
 		elif key == ord('e'): # rotate right
 			tello.send_rc_control(0, 0, 0, tello_spped)
-		elif key == ord('h'): # rotate right
+		elif key == ord('h'): # stop
 			tello.send_rc_control(0, 0, 0, 0)
 
 	process_thread.join()
 
-	write_process.terminate()
-
-	write_process.join()
+	if video_write:
+		write_process.terminate()
+		write_process.join()
 
 	tello.end()
 
