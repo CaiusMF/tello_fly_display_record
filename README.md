@@ -8,7 +8,6 @@ Python package for controlling the Tello drone.
 
 Link: https://github.com/damiafuentes/DJITelloPy
 
-Install:
 ```
 pip install https://github.com/damiafuentes/DJITelloPy/archive/master.zip
 ```
@@ -16,7 +15,6 @@ pip install https://github.com/damiafuentes/DJITelloPy/archive/master.zip
 ### OpenCV
 Computer vision library.
 
-Install:
 ```
 pip install opencv-python
 ```
@@ -62,4 +60,5 @@ FPS (avg):
 
 ## Notes
  * Tello object cannot be shared across processes. I use an extra thread to simulate this in order to solve the command/stream functionalities. Best way to keep a high FPS is to send commands via a Pipe, so that the command while loop waits until further notice and let's the stream loop uninterrupted.
- * Every Tello project I read/tried used the function time.sleep(1 / FPS) after writing a frame to file. This made the whole process way slower (reduced FPS) and also seemed redundant, but the output videos were very slow (visually) if not for the sleep function. After some experiments, I figured it out. The purpose of the sleep function is to account for duplicate frames. Because the processing of the stream is faster than the stream itself, many times you read the same frame. Not using sleep makes the output video seem slow. I solved this by comparing the previous and current frames (in gray form). Now the FPS is way higher and the recordings look good.
+ * Every Tello project I read/tried used the function `time.sleep(1 / FPS)` after writing a frame to file. This made the whole process way slower (reduced FPS) and also seemed redundant, but the output videos were very slow (visually) if not for the sleep function. After some experiments, I figured it out. The purpose of the sleep function is to account for duplicate frames. Because the processing of the stream is faster than the stream itself, many times you read the same frame. Not using sleep makes the output video seem slow. I solved this by comparing the previous and current frames (in gray form). Now the FPS is way higher and the recordings look good.
+ * Suggestion: use the first script.
